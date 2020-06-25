@@ -50,6 +50,8 @@
  #include <AR2/featureSet.h>
  #include <AR2/template.h>
 
+ #include <emscripten.h>
+
 AR2HandleT *ar2CreateHandleMod( ARParamLT *cparamLT, AR_PIXEL_FORMAT pixFormat/*, int threadNum*/ )
 {
     AR2HandleT   *ar2Handle;
@@ -132,17 +134,91 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
 
      *err = 0.0F;
 
+     EM_ASM_({
+       var $a = arguments;
+       if (!artoolkit.kimDebugMatching.dataPtr) artoolkit.kimDebugMatching.dataPtr = ([]);
+       artoolkit.kimDebugMatching.dataPtr.push([]);
+     });
+     for (int j = 0; j < ar2Handle->ysize; j++) {
+       for (int i = 0; i < ar2Handle->xsize; i++) {
+         EM_ASM_({
+           var a = arguments;
+           if (a[0] == 0) {
+             artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1].push([]);
+           }
+artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1][a[1]][a[0]] = ([a[2], a[3], a[4], a[5]]);
+         }, i, j, 
+           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 0],
+           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 1],
+           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 2],
+           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 3]);
+       }
+     }
+
+     EM_ASM_({
+         var $a = arguments;
+         artoolkit.kimDebugMatching.wTrans1 = [];
+     });
+
      for( i = 0; i < surfaceSet->num; i++ ) {
          arUtilMatMulf( (const float (*)[4])surfaceSet->trans1, (const float (*)[4])surfaceSet->surface[i].trans, ar2Handle->wtrans1[i] );
          if( surfaceSet->contNum > 1 ) arUtilMatMulf( (const float (*)[4])surfaceSet->trans2, (const float (*)[4])surfaceSet->surface[i].trans, ar2Handle->wtrans2[i] );
          if( surfaceSet->contNum > 2 ) arUtilMatMulf( (const float (*)[4])surfaceSet->trans3, (const float (*)[4])surfaceSet->surface[i].trans, ar2Handle->wtrans3[i] );
+
+       EM_ASM_({
+           var $a = arguments;
+           artoolkit.kimDebugMatching.wTrans1.push([[],[],[]]);
+       });
+       for (int ii = 0; ii < 3; ii++) {
+         for (int jj = 0; jj < 4; jj++) {
+           EM_ASM_({
+               var a = arguments;
+               artoolkit.kimDebugMatching.wTrans1[a[0]][a[1]][a[2]] = a[3];
+           }, i, ii, jj, ar2Handle->wtrans1[i][ii][jj]);
+         }
+       }
      }
+
+     EM_ASM_({
+         var $a = arguments;
+         artoolkit.kimDebugMatching.trackFeatures = [];
+         artoolkit.kimDebugMatching.candidates1 = [];
+         artoolkit.kimDebugMatching.candidates2 = [];
+         artoolkit.kimDebugMatching.selectTemplate = [];
+         artoolkit.kimDebugMatching.tracking2dSub = [];
+         artoolkit.kimDebugMatching.selectedFeatures = [];
+     });
 
      if( ar2Handle->trackingMode == AR2_TRACKING_6DOF ) {
          extractVisibleFeatures(ar2Handle->cparamLT, ar2Handle->wtrans1, surfaceSet, ar2Handle->candidate, ar2Handle->candidate2);
      }
      else {
          extractVisibleFeaturesHomography(ar2Handle->xsize, ar2Handle->ysize, ar2Handle->wtrans1, surfaceSet, ar2Handle->candidate, ar2Handle->candidate2);
+     }
+
+     for(int ii = 0; ar2Handle->candidate[ii].flag != -1; ii++ ) {
+        EM_ASM_({
+          var a = arguments;
+          artoolkit.kimDebugMatching.candidates1.push({
+            sx: a[0],
+            sy: a[1],
+            snum: a[2],
+            level: a[3],
+            num: a[4]
+          });
+        }, ar2Handle->candidate[ii].sx, ar2Handle->candidate[ii].sy, ar2Handle->candidate[ii].snum, ar2Handle->candidate[ii].level, ar2Handle->candidate[ii].num);
+     }
+     for(int ii = 0; ar2Handle->candidate2[ii].flag != -1; ii++ ) {
+        EM_ASM_({
+          var a = arguments;
+          artoolkit.kimDebugMatching.candidates2.push({
+            sx: a[0],
+            sy: a[1],
+            snum: a[2],
+            level: a[3],
+            num: a[4]
+          });
+        }, ar2Handle->candidate2[ii].sx, ar2Handle->candidate2[ii].sy, ar2Handle->candidate2[ii].snum, ar2Handle->candidate2[ii].level, ar2Handle->candidate2[ii].num);
      }
 
      candidatePtr = ar2Handle->candidate;
@@ -184,6 +260,7 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
 
          for( j = 0; j < k; j++ ) {
              {
+
                  AR2Tracking2DParamT* arg = &ar2Handle->arg[j];
                  arg->ret = ar2Tracking2dSub(arg->ar2Handle, arg->surfaceSet, arg->candidate,
                                              arg->dataPtr, arg->mfImage, &(arg->templ), &(arg->result));
@@ -201,8 +278,12 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
                      arParamObserv2Ideal(ar2Handle->cparamLT->param.dist_factor,
                                          (ARdouble)(ar2Handle->arg[j].result.pos2d[0]), (ARdouble)(ar2Handle->arg[j].result.pos2d[1]),
                                          &pos2d0, &pos2d1, ar2Handle->cparamLT->param.dist_function_version);
-                     ar2Handle->pos2d[num][0] = (float)pos2d0;
-                     ar2Handle->pos2d[num][1] = (float)pos2d1;
+
+                     // kim disable camera adjustment
+                     //ar2Handle->pos2d[num][0] = (float)pos2d0;
+                     //ar2Handle->pos2d[num][1] = (float)pos2d1;
+                     ar2Handle->pos2d[num][0] = ar2Handle->arg[j].result.pos2d[0];
+                     ar2Handle->pos2d[num][1] = ar2Handle->arg[j].result.pos2d[1];
  #endif
                  }
                  else {
@@ -230,6 +311,16 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
      }
      surfaceSet->prevFeature[num].flag = -1;
  //ARLOG("------\nNum = %d\n", num);
+ 
+     for(int ii = 0; ii < num; ii++ ) {
+        EM_ASM_({
+          var a = arguments;
+          artoolkit.kimDebugMatching.selectedFeatures.push({
+            pos2D: [a[0], a[1]],
+            pos3D: [a[2], a[3], a[4]],
+          });
+        }, ar2Handle->pos2d[ii][0], ar2Handle->pos2d[ii][1], ar2Handle->pos3d[ii][0], ar2Handle->pos3d[ii][1], ar2Handle->pos3d[ii][2]);
+     }
 
      if( ar2Handle->trackingMode == AR2_TRACKING_6DOF ) {
          if( num < 3 ) {
@@ -237,22 +328,96 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
              return -3;
          }
          *err = ar2GetTransMat( ar2Handle->icpHandle, surfaceSet->trans1, ar2Handle->pos2d, ar2Handle->pos3d, num, trans, 0 );
+
+         EM_ASM_({
+           var a = arguments;
+           artoolkit.kimDebugMatching.getTransMat1Err = a[0];
+           artoolkit.kimDebugMatching.getTransMat1 = ([[], [], []]);
+         }, *err);
+         for (int ii = 0; ii < 3; ii++) {
+           for (int jj = 0; jj < 4; jj++) {
+             EM_ASM_({
+                 var a = arguments;
+                 artoolkit.kimDebugMatching.getTransMat1[a[0]][a[1]] = a[2];
+             }, ii, jj, trans[ii][jj]);
+           }
+         }
+
  //ARLOG("outlier  0%%: err = %f, num = %d\n", *err, num);
          if( *err > ar2Handle->trackingThresh ) {
              icpSetInlierProbability( ar2Handle->icpHandle, 0.8F );
              *err = ar2GetTransMat( ar2Handle->icpHandle, trans, ar2Handle->pos2d, ar2Handle->pos3d, num, trans, 1 );
  //ARLOG("outlier 20%%: err = %f, num = %d\n", *err, num);
+ 
+             EM_ASM_({
+               var a = arguments;
+               artoolkit.kimDebugMatching.getTransMat2Err = a[0];
+               artoolkit.kimDebugMatching.getTransMat2 = ([[], [], []]);
+             }, *err);
+             for (int ii = 0; ii < 3; ii++) {
+               for (int jj = 0; jj < 4; jj++) {
+                 EM_ASM_({
+                     var a = arguments;
+                     artoolkit.kimDebugMatching.getTransMat2[a[0]][a[1]] = a[2];
+                 }, ii, jj, trans[ii][jj]);
+               }
+             }
+
              if( *err > ar2Handle->trackingThresh ) {
                  icpSetInlierProbability( ar2Handle->icpHandle, 0.6F );
                  *err = ar2GetTransMat( ar2Handle->icpHandle, trans, ar2Handle->pos2d, ar2Handle->pos3d, num, trans, 1 );
  //ARLOG("outlier 60%%: err = %f, num = %d\n", *err, num);
+ //
+                 EM_ASM_({
+                   var a = arguments;
+                   artoolkit.kimDebugMatching.getTransMat3Err = a[0];
+                   artoolkit.kimDebugMatching.getTransMat3 = ([[], [], []]);
+                 }, *err);
+                 for (int ii = 0; ii < 3; ii++) {
+                   for (int jj = 0; jj < 4; jj++) {
+                     EM_ASM_({
+                         var a = arguments;
+                         artoolkit.kimDebugMatching.getTransMat3[a[0]][a[1]] = a[2];
+                     }, ii, jj, trans[ii][jj]);
+                   }
+                 }
+
                  if( *err > ar2Handle->trackingThresh ) {
                      icpSetInlierProbability( ar2Handle->icpHandle, 0.4F );
                      *err = ar2GetTransMat( ar2Handle->icpHandle, trans, ar2Handle->pos2d, ar2Handle->pos3d, num, trans, 1 );
+                     EM_ASM_({
+                       var a = arguments;
+                       artoolkit.kimDebugMatching.getTransMat4Err = a[0];
+                       artoolkit.kimDebugMatching.getTransMat4 = ([[], [], []]);
+                     }, *err);
+                     for (int ii = 0; ii < 3; ii++) {
+                       for (int jj = 0; jj < 4; jj++) {
+                         EM_ASM_({
+                             var a = arguments;
+                             artoolkit.kimDebugMatching.getTransMat4[a[0]][a[1]] = a[2];
+                         }, ii, jj, trans[ii][jj]);
+                       }
+                     }
+
  //ARLOG("outlier 60%%: err = %f, num = %d\n", *err, num);
                      if( *err > ar2Handle->trackingThresh ) {
                          icpSetInlierProbability( ar2Handle->icpHandle, 0.0F );
                          *err = ar2GetTransMat( ar2Handle->icpHandle, trans, ar2Handle->pos2d, ar2Handle->pos3d, num, trans, 1 );
+
+                         EM_ASM_({
+                           var a = arguments;
+                           artoolkit.kimDebugMatching.getTransMat5Err = a[0];
+                           artoolkit.kimDebugMatching.getTransMat5 = ([[], [], []]);
+                         }, *err);
+                         for (int ii = 0; ii < 3; ii++) {
+                           for (int jj = 0; jj < 4; jj++) {
+                             EM_ASM_({
+                                 var a = arguments;
+                                 artoolkit.kimDebugMatching.getTransMat5[a[0]][a[1]] = a[2];
+                             }, ii, jj, trans[ii][jj]);
+                           }
+                         }
+
  //ARLOG("outlier Max: err = %f, num = %d\n", *err, num);
                          if( *err > ar2Handle->trackingThresh ) {
                              surfaceSet->contNum = 0;
@@ -346,6 +511,24 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
                                                   surfaceSet->surface[i].featureSet->list[j].coord[k].mx,
                                                   surfaceSet->surface[i].featureSet->list[j].coord[k].my,
                                                   &sx, &sy) < 0 ) continue;
+
+               EM_ASM_({
+                   var a = arguments;
+                   artoolkit.kimDebugMatching.trackFeatures.push({
+                     i: a[0],
+                     j: a[1],
+                     k: a[2],
+                     mx: a[3],
+                     my: a[4],
+                     maxdpi: a[5],
+                     mindip: a[6],
+                     sx: a[7],
+                     sy: a[8],
+                     xsize: a[9],
+                     ysize: a[10],
+                   });
+               }, i, j, k, surfaceSet->surface[i].featureSet->list[j].coord[k].mx, surfaceSet->surface[i].featureSet->list[j].coord[k].my, surfaceSet->surface[i].featureSet->list[j].maxdpi, surfaceSet->surface[i].featureSet->list[j].mindpi, sx, sy, xsize, ysize);
+
                  if( sx < 0 || sx >= xsize ) continue;
                  if( sy < 0 || sy >= ysize ) continue;
 
@@ -362,6 +545,13 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
                  vdir[0] /= vlen;
                  vdir[1] /= vlen;
                  vdir[2] /= vlen;
+
+                 EM_ASM_({
+                   var a = arguments;
+                   var f = artoolkit.kimDebugMatching.trackFeatures[artoolkit.kimDebugMatching.trackFeatures.length-1];
+                   f.vdir = ([a[0], a[1], a[2], a[3]]);
+                 }, vdir[0], vdir[1], vdir[2], vdir[0]*trans2[0][2] + vdir[1]*trans2[1][2] + vdir[2]*trans2[2][2]);
+
                  if( vdir[0]*trans2[0][2] + vdir[1]*trans2[1][2] + vdir[2]*trans2[2][2] > -0.1f ) continue;
 
                  wpos[0] = surfaceSet->surface[i].featureSet->list[j].coord[k].mx;
@@ -369,6 +559,13 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
                  ar2GetResolution( cparamLT, (const float (*)[4])trans2, wpos, w );
                  //if( w[0] <= surfaceSet->surface[i].featureSet->list[j].maxdpi
                  // && w[0] >= surfaceSet->surface[i].featureSet->list[j].mindpi ) {
+                 
+                 EM_ASM_({
+                   var a = arguments;
+                   var f = artoolkit.kimDebugMatching.trackFeatures[artoolkit.kimDebugMatching.trackFeatures.length-1];
+                   f.w = ([a[0], a[1]]);
+                 }, w[0], w[1]);
+
                  if( w[1] <= surfaceSet->surface[i].featureSet->list[j].maxdpi
                   && w[1] >= surfaceSet->surface[i].featureSet->list[j].mindpi ) {
                      if( l == AR2_TRACKING_CANDIDATE_MAX ) {

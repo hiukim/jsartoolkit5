@@ -1,0 +1,104 @@
+<head>
+  <script src="https://www.lactame.com/lib/image-js/0.21.2/image.min.js"></script> 
+  <script src="https://rawgit.com/kawanet/msgpack-lite/master/dist/msgpack.min.js"></script>
+  <script src="./js/third_party/three.js/stats.min.js"></script>
+  <script src="../build/artoolkit.debug.js?a=4"></script>
+
+  <script>
+    const getDpiList = (inputImage) => {
+      const DEFAULT_DPI = 72;
+      const MIN_IMAGE_PIXEL_SIZE = 28;
+      const dpi = DEFAULT_DPI;
+      const minDpi = Math.floor(1.0 * MIN_IMAGE_PIXEL_SIZE / Math.min(inputImage.width, inputImage.height) * dpi * 1000) / 1000;
+      const dpiList = [];
+
+      let c = minDpi;
+      while (true) {
+        dpiList.push(c);
+        c *= Math.pow(2.0, 1.0/3.0);
+        c = Math.fround(c); // can remove this line in production. trying to reproduce the same result as artoolkit, which use float.
+        if (c >= dpi * 0.95) {
+          c = dpi;
+          break;
+        }
+      }
+      dpiList.push(c);
+      dpiList.reverse();
+      return dpiList;
+    }
+    const _getGreyImage = (image) => {
+      const greyImage = {
+        width: image.width,
+        height: image.height,
+        data: []
+      }
+      for (let i = 0; i < image.data.length; i+=4) {
+        greyImage.data.push( Math.floor((image.data[i] + image.data[i+1] + image.data[i+2]) / 3));
+      }
+      return greyImage;
+    }
+    const getGreyImage = (image) => {
+      const _greyImage = image.grey({algorithm: "average"});
+      const greyImage = {
+        width: _greyImage.width,
+        height: _greyImage.height,
+        data: []
+      };
+      for (let i = 0; i < _greyImage.data.length; i++) {
+        greyImage.data.push( Math.floor(_greyImage.data[i] / _greyImage.maxValue * 255));
+      }
+      return greyImage;
+    }
+
+    document.addEventListener('DOMContentLoaded', function(event) {
+      const exec = async () => {
+        let file = "card8";
+        let targetImage = await IJS.Image.load('./Data/' + file + '.png');
+        //targetImage = targetImage.resize({width: 640, height: 480});
+        let greyImage = getGreyImage(targetImage);
+
+        let dpiList = getDpiList(greyImage);
+        Kim.compileImage(greyImage.data, greyImage.width, greyImage.height, dpiList);
+
+        var buffer = msgpack.encode(artoolkit.kimDebugData);
+        var blob = new Blob([buffer], {type: 'text/plain'});
+        var aLink = window.document.createElement('a');
+        aLink.download = 'debugGen_' + file + '.msp';
+        aLink.href = window.URL.createObjectURL(blob);
+        aLink.click();
+
+        let mime = "application/octet-stream";
+        var aLink = window.document.createElement('a');
+        var content = Module.FS.readFile('./asa.iset');
+        aLink.download = file + '.iset';
+        aLink.href = URL.createObjectURL(new Blob([content], { type: mime }));
+        aLink.click();
+
+        var aLink2 = window.document.createElement('a');
+        var content2 = Module.FS.readFile('./asa.fset');
+        aLink2.download = file + '.fset';
+        aLink2.href = URL.createObjectURL(new Blob([content2], { type: mime }));
+        aLink2.click();
+
+        var aLink3 = window.document.createElement('a');
+        var content3 = Module.FS.readFile('./asa.fset3');
+        aLink3.download = file + '.fset3';
+        aLink3.href = URL.createObjectURL(new Blob([content3], { type: mime }));
+        aLink3.click();
+        return;
+
+        //var data = new Blob([JSON.stringify(artoolkit.kimDebugData)], {type: 'text/plain'});
+        //var aLink = window.document.createElement('a');
+        //aLink.download = 'debugGen_' + file + '.txt';
+        //aLink.href = window.URL.createObjectURL(data);
+        //aLink.click();
+      };
+      exec();
+    });
+  </script>
+</head>
+<body>
+  <img id="test-image" src="./Data/card.png" />
+  <canvas id="canvas"></canvas>
+</body>
+

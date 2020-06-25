@@ -44,6 +44,21 @@
         }
     }
 
+    var Kim = {
+        compileImage: (imageData, width, height, dpiList) => {
+            console.log("compile Image", imageData, width, height, dpiList);
+            const data = new Module.IntList();
+            const dpi_list = new Module.FloatList();
+            for (let i = 0; i < imageData.length; i++) {
+                data.push_back(imageData[i]);
+            }
+            for (let i = 0; i < dpiList.length; i++) {
+                dpi_list.push_back(dpiList[i]);
+            }
+            const ret = Module.genFeature(data, width, height, dpi_list, dpiList.length);
+        }
+    }
+
 	/**
 		The ARController is the main object for doing AR marker detection with JSARToolKit.
 
@@ -1371,14 +1386,26 @@
 
         //Here we have access to the unmodified video image. We now need to add the videoLuma chanel to be able to serve the underlying ARTK API
         if (this.videoLuma) {
-            var q = 0;
-            //Create luma from video data assuming Pixelformat AR_PIXEL_FORMAT_RGBA (ARToolKitJS.cpp L: 43)
 
-            for (var p = 0; p < this.videoSize; p++) {
-                var r = data[q + 0], g = data[q + 1], b = data[q + 2];
-                // videoLuma[p] = (r+r+b+g+g+g)/6;         // https://stackoverflow.com/a/596241/5843642
-                this.videoLuma[p] = (r + r + r + b + g + g + g + g) >> 3;
-                q += 4;
+            // Kim : handle gray image
+            if (this.videoSize === data.length) {
+                for (var p = 0; p < this.videoSize; p++) {
+                    this.videoLuma[p] = data[p];
+                }
+            } else {
+                var q = 0;
+                //Create luma from video data assuming Pixelformat AR_PIXEL_FORMAT_RGBA (ARToolKitJS.cpp L: 43)
+
+                for (var p = 0; p < this.videoSize; p++) {
+                    var r = data[q + 0], g = data[q + 1], b = data[q + 2];
+                    // videoLuma[p] = (r+r+b+g+g+g)/6;         // https://stackoverflow.com/a/596241/5843642
+
+                    // kim: use greyscale instead of luma for better debugging
+                    //this.videoLuma[p] = (r + r + r + b + g + g + g + g) >> 3;
+                    this.videoLuma[p] = Math.floor((r + b + g) / 3);
+
+                    q += 4;
+                }
             }
         }
 
@@ -1803,6 +1830,8 @@
     };
 
     var FUNCTIONS = [
+        'genFeature',
+
         'setup',
         'teardown',
 
@@ -2067,6 +2096,7 @@
     scope.artoolkit = artoolkit;
     scope.ARController = ARController;
     scope.ARCameraParam = ARCameraParam;
+    scope.Kim = Kim;
     if (scope.artoolkit_wasm_url) {
       scope.Module = Module;
     };

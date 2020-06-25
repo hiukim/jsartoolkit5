@@ -1,0 +1,60 @@
+<head>
+  <script src="https://www.lactame.com/lib/image-js/0.21.2/image.min.js"></script> 
+  <script src="https://rawgit.com/kawanet/msgpack-lite/master/dist/msgpack.min.js"></script>
+  <script src="./js/third_party/three.js/stats.min.js"></script>
+  <script src="../build/artoolkit.debug.js"></script>
+
+  <script>
+    const getGreyImage = (image) => {
+      const _greyImage = image.grey({algorithm: "average"});
+      const greyImage = {
+        width: _greyImage.width,
+        height: _greyImage.height,
+        data: []
+      };
+      for (let i = 0; i < _greyImage.data.length; i++) {
+        greyImage.data.push( Math.floor(_greyImage.data[i] / _greyImage.maxValue * 255));
+      }
+      return greyImage;
+    }
+    document.addEventListener('DOMContentLoaded', function(event) {
+      const marker = {
+        url: './markers/card7'
+      };
+
+      //const pw = 320;
+      //const ph = 240;
+      const pw = 640;
+      const ph = 480;
+      const param = new ARCameraParam('./Data/camera_para-iPhone 5 rear 640x480 1.0m.dat');
+      //const param = new ARCameraParam('./Data//camera_para_640_480_1m.dat');
+      param.onload = function () {
+        const ar = new ARController(pw, ph, param);
+        console.log("param", param, ar.getCameraMatrix());
+
+        ar.loadNFTMarker(marker.url, async function (markerId) {
+        //ar.loadNFTMarkers([marker.url, marker.url], function (markerId) {
+          //ar.trackNFTMarkerId(markerId, 2);
+          console.log("loadNFTMarker -> ", markerId);
+
+          let queryfile = "card7_5";
+          let queryImage = await IJS.Image.load('./Data/' + queryfile + '.png');
+          queryImage = queryImage.resize({width: pw, height: ph});
+          let greyQueryImage = getGreyImage(queryImage);
+          console.log("grey query image", greyQueryImage);
+          ar.process(greyQueryImage);
+
+          var buffer = msgpack.encode(artoolkit.kimDebugMatching);
+          var blob = new Blob([buffer], {type: 'text/plain'});
+          var aLink = window.document.createElement('a');
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '.msp';
+          aLink.href = window.URL.createObjectURL(blob);
+          aLink.click();
+        });
+      }
+    });
+  </script>
+</head>
+
+<body>
+</body>

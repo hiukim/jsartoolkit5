@@ -46,6 +46,8 @@
 #include <AR2/searchPoint.h>
 #include <AR2/tracking.h>
 
+#include <emscripten.h>
+
 #if AR2_CAPABLE_ADAPTIVE_TEMPLATE
 int ar2Tracking2dSub ( AR2HandleT *handle, AR2SurfaceSetT *surfaceSet, AR2TemplateCandidateT *candidate,
                               ARUint8 *dataPtr, ARUint8 *mfImage, AR2TemplateT **templ,
@@ -76,6 +78,21 @@ int ar2Tracking2dSub ( AR2HandleT *handle, AR2SurfaceSetT *surfaceSet, AR2Templa
     snum  = candidate->snum;
     level = candidate->level;
     fnum  = candidate->num;
+
+    EM_ASM_({
+      var a = arguments;
+      artoolkit.kimDebugMatching.tracking2dSub.push({
+        snum: a[0],
+        leve: a[1],
+        fnum: a[2],
+        templateCompute: ([]),
+        matchingCompute: ([]),
+        matchingComputeSum: ([]),
+        matchingCandidates: ([]),
+        bestMatchingCompute: ([]),
+        bestMatched: ([]),
+      });
+    }, snum, level, fnum);
 
     if( *templ == NULL )  *templ = ar2GenTemplate( handle->templateSize1, handle->templateSize2 );
 #if AR2_CAPABLE_ADAPTIVE_TEMPLATE
@@ -126,6 +143,32 @@ int ar2Tracking2dSub ( AR2HandleT *handle, AR2SurfaceSetT *surfaceSet, AR2Templa
            * AR2_DEFAULT_TRACKING_SD_THRESH * AR2_DEFAULT_TRACKING_SD_THRESH ) {
         return -1;
     }
+
+    EM_ASM_({
+      var a = arguments;
+      var s = artoolkit.kimDebugMatching.tracking2dSub[artoolkit.kimDebugMatching.tracking2dSub.length-1];
+      s.vlen = a[0];
+      s.sum = a[1];
+      s.validNum = a[2];
+      s.yts1 = a[3];
+      s.yts2 = a[4];
+      s.xts1 = a[5];
+      s.xts2 = a[6];
+      s.template = ([]);
+    }, (*templ)->vlen, (*templ)->sum, (*templ)->validNum, (*templ)->yts1, (*templ)->yts2, (*templ)->xts1, (*templ)->xts2);
+
+    int iii = 0;
+    for(int j = -((*templ)->yts1); j <= (*templ)->yts2; j++) {
+      for(int i = -((*templ)->xts1); i <= (*templ)->xts2; i++) {
+        EM_ASM_({
+          var a = arguments;
+          var s = artoolkit.kimDebugMatching.tracking2dSub[artoolkit.kimDebugMatching.tracking2dSub.length-1];
+          s.template.push(a[0]);
+        }, (*templ)->img1[iii]);
+        iii += 1;
+      }
+    }
+
 #endif
 
     // Get the screen coordinates for up to three previous positions of this feature into search[][].
@@ -150,6 +193,17 @@ int ar2Tracking2dSub ( AR2HandleT *handle, AR2SurfaceSetT *surfaceSet, AR2Templa
                          &(surfaceSet->surface[snum].featureSet->list[level].coord[fnum]),
                            search );
     }
+
+    EM_ASM_({
+      var a = arguments;
+      var s = artoolkit.kimDebugMatching.tracking2dSub[artoolkit.kimDebugMatching.tracking2dSub.length-1];
+      s.search = ({
+        s1: ([a[0], a[1]]),
+        s2: ([a[2], a[3]]),
+        s3: ([a[4], a[5]]),
+        m1: ([a[6], a[7]])
+      });
+    }, search[0][0], search[0][1], search[1][0], search[1][1], search[2][0], search[2][1], surfaceSet->surface[snum].featureSet->list[level].coord[fnum].mx, surfaceSet->surface[snum].featureSet->list[level].coord[fnum].my);
 
 #if AR2_CAPABLE_ADAPTIVE_TEMPLATE
     if( handle->blurMethod == AR2_CONSTANT_BLUR ) {
@@ -211,6 +265,35 @@ int ar2Tracking2dSub ( AR2HandleT *handle, AR2SurfaceSetT *surfaceSet, AR2Templa
     result->pos3d[2] = surfaceSet->surface[snum].trans[2][0] * surfaceSet->surface[snum].featureSet->list[level].coord[fnum].mx
                      + surfaceSet->surface[snum].trans[2][1] * surfaceSet->surface[snum].featureSet->list[level].coord[fnum].my
                      + surfaceSet->surface[snum].trans[2][3];
+
+    EM_ASM_({
+      var a = arguments;
+      var s = artoolkit.kimDebugMatching.tracking2dSub[artoolkit.kimDebugMatching.tracking2dSub.length-1];
+      s.bestMatched.push({
+        pos2d: ([a[0], a[1]]),
+        pos3d: ([a[2], a[3], a[4]]),
+        sim: a[5],
+        mx: a[6],
+        my: a[7],
+        trans: ([
+          [a[8], a[9], null, a[10]],
+          [a[11], a[12], null, a[14]],
+          [a[15], a[16], null, a[17]],
+        ])
+      });
+    }, result->pos2d[0], result->pos2d[1], result->pos3d[0], result->pos3d[1], result->pos3d[2], result->sim,
+      surfaceSet->surface[snum].featureSet->list[level].coord[fnum].mx,
+      surfaceSet->surface[snum].featureSet->list[level].coord[fnum].my,
+      surfaceSet->surface[snum].trans[0][0],
+      surfaceSet->surface[snum].trans[0][1],
+      surfaceSet->surface[snum].trans[0][3],
+      surfaceSet->surface[snum].trans[1][0],
+      surfaceSet->surface[snum].trans[1][1],
+      surfaceSet->surface[snum].trans[1][3],
+      surfaceSet->surface[snum].trans[1][0],
+      surfaceSet->surface[snum].trans[1][1],
+      surfaceSet->surface[snum].trans[1][3]
+      ); 
 
     return 0;
 }

@@ -92,6 +92,204 @@ static ARMarkerInfo gMarkerInfo;
 
 extern "C" {
 
+    /**
+     * kim: gen feature API
+     */
+    int genFeature(std::vector<int> &imageData, int width, int height, std::vector<float> &dpiList, int dpi_num) {
+        ARLOGi("start generate feature %d %d \n", width, height);
+
+        char *filename = "asa";
+
+        float max_thresh = 0.9;
+        float min_thresh = 0.55;
+        float sd_thresh = 8.0;
+        int occ_size = 24 * 2 / 3;
+        int num;
+        float scale1;
+        float scale2;
+
+        ARUint8 *image;
+        AR2FeatureMapT      *featureMap = NULL;
+        AR2FeatureSetT      *featureSet = NULL;
+        KpmRefDataSet       *refDataSet = NULL;
+
+        arMalloc(image, ARUint8, width * height);
+        float dpi = 72;
+        float dpi_list[dpi_num];
+        for (int i = 0; i < dpi_num; i++) {
+            dpi_list[i] = dpiList[i];
+        }
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                image[j * width + i] = imageData[j * width + i];
+            }
+        }
+        EM_ASM_({
+            var a = arguments;
+            artoolkit.kimDebugData = {};
+            artoolkit.kimDebugData.inputImage = [];
+            artoolkit.kimDebugData.imageSets = [];
+        });
+
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                EM_ASM_({
+                    var a = arguments;
+                    artoolkit.kimDebugData.inputImage.push(a[0]);
+                }, image[j * width + i]);
+            }
+        }
+        AR2ImageSetT *imageSet = ar2GenImageSet( image, width, height, 1, dpi, dpi_list, dpi_num);
+        ar2WriteImageSet(filename, imageSet);
+
+        if (1) { //fset
+          EM_ASM_({
+              artoolkit.kimDebugData.featureMaps = [];
+              artoolkit.kimDebugData.featureMapsTemplates = [];
+              artoolkit.kimDebugData.featureSets = [];
+              artoolkit.kimDebugData.dValues = [];
+              artoolkit.kimDebugData.hists = [];
+          });
+
+          arMalloc( featureSet, AR2FeatureSetT, 1 );  
+          arMalloc( featureSet->list, AR2FeaturePointsT, imageSet->num );
+          featureSet->num = imageSet->num;
+
+          for(int i = 0; i < imageSet->num; i++ ) {
+            EM_ASM_({
+                artoolkit.kimDebugData.featureMaps.push([]);
+                artoolkit.kimDebugData.featureMapsTemplates.push([]);
+            });
+            featureMap = ar2GenFeatureMap( imageSet->scale[i],
+                AR2_DEFAULT_TS1*AR2_TEMP_SCALE, AR2_DEFAULT_TS2*AR2_TEMP_SCALE,
+                AR2_DEFAULT_GEN_FEATURE_MAP_SEARCH_SIZE1, AR2_DEFAULT_GEN_FEATURE_MAP_SEARCH_SIZE2,
+                AR2_DEFAULT_MAX_SIM_THRESH2, AR2_DEFAULT_SD_THRESH2 );
+
+            for (int jj = 0; jj < featureMap->ysize; jj++) {
+              for (int ii = 0; ii < featureMap->xsize; ii++) {
+                  EM_ASM_({
+                      var a = arguments;
+                      artoolkit.kimDebugData.featureMaps[a[0]].push(a[1]);
+                  }, i, featureMap->map[jj * featureMap->xsize + ii]); 
+              }
+            }
+
+            featureSet->list[i].coord = ar2SelectFeature2( imageSet->scale[i], featureMap,
+                                                            AR2_DEFAULT_TS1*AR2_TEMP_SCALE, AR2_DEFAULT_TS2*AR2_TEMP_SCALE, AR2_DEFAULT_GEN_FEATURE_MAP_SEARCH_SIZE2,
+                                                            occ_size,
+                                                            max_thresh, min_thresh, sd_thresh, &num );
+
+              if( featureSet->list[i].coord == NULL ) num = 0;
+              featureSet->list[i].num   = num;
+              featureSet->list[i].scale = i;
+              
+              scale1 = 0.0f;
+              for(int j = 0; j < imageSet->num; j++ ) {
+                  if( imageSet->scale[j]->dpi < imageSet->scale[i]->dpi ) {
+                      if( imageSet->scale[j]->dpi > scale1 ) scale1 = imageSet->scale[j]->dpi;
+                  }
+              }
+              if( scale1 == 0.0f ) {
+                  featureSet->list[i].mindpi = imageSet->scale[i]->dpi * 0.5f;
+              }
+              else {
+                  /*
+                   scale2 = imageSet->scale[i]->dpi;
+                   scale = sqrtf( scale1 * scale2 );
+                   featureSet->list[i].mindpi = scale2 / ((scale2/scale - 1.0f)*1.1f + 1.0f);
+                   */
+                  featureSet->list[i].mindpi = scale1;
+              }
+              
+              scale1 = 0.0f;
+              for(int j = 0; j < imageSet->num; j++ ) {
+                  if( imageSet->scale[j]->dpi > imageSet->scale[i]->dpi ) {
+                      if( scale1 == 0.0f || imageSet->scale[j]->dpi < scale1 ) scale1 = imageSet->scale[j]->dpi;
+                  }
+              }
+              if( scale1 == 0.0f ) {
+                  featureSet->list[i].maxdpi = imageSet->scale[i]->dpi * 2.0f;
+              }
+              else {
+                  //scale2 = imageSet->scale[i]->dpi * 1.2f;
+                  scale2 = imageSet->scale[i]->dpi;
+                  /*
+                   scale = sqrtf( scale1 * scale2 );
+                   featureSet->list[i].maxdpi = scale2 * ((scale/scale2 - 1.0f)*1.1f + 1.0f);
+                   */
+                  featureSet->list[i].maxdpi = scale2*0.8f + scale1*0.2f;
+              }
+          }
+
+          for (int k = 0; k < imageSet->num; k++) {
+            EM_ASM_({
+                artoolkit.kimDebugData.imageSets.push([]);
+            });
+              AR2ImageT *debugImage = imageSet->scale[k];
+              for (int i = 0; i < debugImage->xsize; i++) {
+                  for (int j = 0; j < debugImage->ysize; j++) {
+                      int pos = j * debugImage->xsize + i;
+                      EM_ASM_({
+                          var a = arguments;
+                          artoolkit.kimDebugData.imageSets[a[0]][a[1]] = a[2];
+                      }, k, pos, (int)*(debugImage->imgBW + pos));
+                  }
+              }
+          }
+
+          for (int i = 0; i < imageSet->num; i++) {
+              EM_ASM_({
+                  var a = arguments;
+                  artoolkit.kimDebugData.featureSets.push({
+                      maxdpi: a[1],
+                      mindpi: a[2],
+                      scale: a[3],
+                      num: a[4],
+                      coords: [],
+                  });
+              }, i, featureSet->list[i].maxdpi, featureSet->list[i].mindpi, featureSet->list[i].scale, featureSet->list[i].num);            
+
+              for (int k = 0; k < featureSet->list[i].num; k++) {
+                  EM_ASM_({
+                      var a = arguments;
+                      artoolkit.kimDebugData.featureSets[a[0]].coords.push({
+                          x: a[1],
+                          y: a[2],
+                          mx: a[3],
+                          my: a[4],
+                          maxSim: a[5]
+                      });
+                  }, i, featureSet->list[i].coord[k].x, featureSet->list[i].coord[k].y, featureSet->list[i].coord[k].mx, featureSet->list[i].coord[k].my, featureSet->list[i].coord[k].maxSim); 
+              }
+          }
+
+          ar2SaveFeatureSet(filename, "fset", featureSet);
+      }
+
+      // fset3
+      if (1) {
+        int featureDensity = 100;
+        int procMode = KpmProcFullSize;
+        KpmRefDataSet *refDataSet = NULL;
+        for(int i = 0; i < imageSet->num; i++ ) {
+            int maxFeatureNum = featureDensity * imageSet->scale[i]->xsize * imageSet->scale[i]->ysize / (480*360);
+            ARLOGi("(%d, %d) %f[dpi]\n", imageSet->scale[i]->xsize, imageSet->scale[i]->ysize, imageSet->scale[i]->dpi);
+            if( kpmAddRefDataSet (
+                imageSet->scale[i]->imgBW,
+                imageSet->scale[i]->xsize,
+                imageSet->scale[i]->ysize,
+                imageSet->scale[i]->dpi,
+                procMode, KpmCompNull, maxFeatureNum, 1, i, &refDataSet) < 0 ) { // Page number set to 1 by default.
+                  ARLOGe("Error at kpmAddRefDataSet.\n");
+            }
+        }
+        kpmSaveRefDataSet(filename, "fset3", refDataSet);
+      }
+
+      return 0;
+        //imageSet = ar2GenImageSet( image, xsize, ysize, nc, dpi, dpi_list, dpi_num);
+    }
+
 	/**
 		NFT API bindings
 	*/
@@ -254,7 +452,13 @@ extern "C" {
 			kpmDeleteHandle(&arc->kpmHandle);
 		}
 		// Settings for devices with single-core CPUs.
+
+
+        // kim: change tracking resh from 5 to 0.2 for debugging
 		ar2SetTrackingThresh(arc->ar2Handle, 5.0);
+		//ar2SetTrackingThresh(arc->ar2Handle, 0.2);
+
+		ar2SetSimThresh(arc->ar2Handle, 0.50);
 		ar2SetSimThresh(arc->ar2Handle, 0.50);
 		ar2SetSearchFeatureNum(arc->ar2Handle, 16);
 		ar2SetSearchSize(arc->ar2Handle, 6);

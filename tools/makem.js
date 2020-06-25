@@ -162,6 +162,8 @@ var WASM_FLAGS = ' -s BINARYEN_TRAP_MODE=clamp'
 
 var PRE_FLAGS = ' --pre-js ' + path.resolve(__dirname, '../js/artoolkit.api.js') +' ';
 
+var EXPORTED_FUNCTIONS = ' -s EXTRA_EXPORTED_RUNTIME_METHODS=["FS, writeStringToMemory"] ';
+
 FLAGS += ' --bind ';
 
 /* DEBUG FLAGS */
@@ -219,17 +221,17 @@ var compile_kpm = format(EMCC + ' ' + INCLUDES + ' '
 var ALL_BC = " {OUTPUT_PATH}libar.bc ";
 
 var compile_combine = format(EMCC + ' ' + INCLUDES + ' '
-    + ALL_BC + MAIN_SOURCES
+    + ALL_BC + MAIN_SOURCES + EXPORTED_FUNCTIONS
     + FLAGS + ' -s WASM=0' + ' '  + DEBUG_FLAGS + DEFINES + PRE_FLAGS + ' -o {OUTPUT_PATH}{BUILD_FILE} ',
     OUTPUT_PATH, OUTPUT_PATH, BUILD_DEBUG_FILE);
 
 var compile_combine_min = format(EMCC + ' ' + INCLUDES + ' '
-    + ALL_BC + MAIN_SOURCES
+    + ALL_BC + MAIN_SOURCES + EXPORTED_FUNCTIONS
     + FLAGS + ' -s WASM=0' + ' ' + DEFINES + PRE_FLAGS + ' -o {OUTPUT_PATH}{BUILD_FILE} ',
     OUTPUT_PATH, OUTPUT_PATH, BUILD_MIN_FILE);
 
 var compile_wasm = format(EMCC + ' ' + INCLUDES + ' '
-    + ALL_BC + MAIN_SOURCES
+    + ALL_BC + MAIN_SOURCES + EXPORTED_FUNCTIONS
     + FLAGS + WASM_FLAGS + DEFINES + PRE_FLAGS + ' -o {OUTPUT_PATH}{BUILD_FILE} ',
     OUTPUT_PATH, OUTPUT_PATH, BUILD_WASM_FILE);
 
@@ -281,8 +283,8 @@ addJob(compile_arlib);
 //addJob(compile_kpm);
 // compile_kpm
 addJob(compile_combine);
-addJob(compile_wasm);
-addJob(compile_combine_min);
+//addJob(compile_wasm);
+//addJob(compile_combine_min);
 //addJob(compile_all);
 
 runJob();
