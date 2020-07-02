@@ -56,6 +56,18 @@
                 dpi_list.push_back(dpiList[i]);
             }
             const ret = Module.genFeature(data, width, height, dpi_list, dpiList.length);
+        },
+        resetImageSet: (imageData, width, height, dpiList) => {
+            console.log("reset Image set", imageData, width, height, dpiList);
+            const data = new Module.IntList();
+            const dpi_list = new Module.FloatList();
+            for (let i = 0; i < imageData.length; i++) {
+                data.push_back(imageData[i]);
+            }
+            for (let i = 0; i < dpiList.length; i++) {
+                dpi_list.push_back(dpiList[i]);
+            }
+            const ret = Module.resetImageSet(0, 0, data, width, height, dpi_list, dpiList.length);
         }
     }
 
@@ -1831,6 +1843,7 @@
 
     var FUNCTIONS = [
         'genFeature',
+        'resetImageSet',
 
         'setup',
         'teardown',

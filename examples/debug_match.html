@@ -5,6 +5,27 @@
   <script src="../build/artoolkit.debug.js"></script>
 
   <script>
+    const getDpiList = (inputImage) => {
+      const DEFAULT_DPI = 72;
+      const MIN_IMAGE_PIXEL_SIZE = 28;
+      const dpi = DEFAULT_DPI;
+      const minDpi = Math.floor(1.0 * MIN_IMAGE_PIXEL_SIZE / Math.min(inputImage.width, inputImage.height) * dpi * 1000) / 1000;
+      const dpiList = [];
+
+      let c = minDpi;
+      while (true) {
+        dpiList.push(c);
+        c *= Math.pow(2.0, 1.0/3.0);
+        c = Math.fround(c); // can remove this line in production. trying to reproduce the same result as artoolkit, which use float.
+        if (c >= dpi * 0.95) {
+          c = dpi;
+          break;
+        }
+      }
+      dpiList.push(c);
+      dpiList.reverse();
+      return dpiList;
+    }
     const getGreyImage = (image) => {
       const _greyImage = image.grey({algorithm: "average"});
       const greyImage = {
@@ -18,16 +39,19 @@
       return greyImage;
     }
     document.addEventListener('DOMContentLoaded', function(event) {
+      const targetFile = "card7";
       const marker = {
-        url: './markers/card7'
+        url: './markers/' + targetFile
       };
 
       //const pw = 320;
       //const ph = 240;
       const pw = 640;
       const ph = 480;
-      const param = new ARCameraParam('./Data/camera_para-iPhone 5 rear 640x480 1.0m.dat');
-      //const param = new ARCameraParam('./Data//camera_para_640_480_1m.dat');
+      //const pw = 800;
+      //const ph = 1001;
+      //const param = new ARCameraParam('./Data/camera_para-iPhone 5 rear 640x480 1.0m.dat');
+      const param = new ARCameraParam('./Data//camera_para_640_480_1m.dat');
       param.onload = function () {
         const ar = new ARController(pw, ph, param);
         console.log("param", param, ar.getCameraMatrix());
@@ -37,19 +61,65 @@
           //ar.trackNFTMarkerId(markerId, 2);
           console.log("loadNFTMarker -> ", markerId);
 
-          let queryfile = "card7_5";
+          // reset image set
+          let targetImage = await IJS.Image.load('./Data/' + targetFile + '.png');
+          let greyImage = getGreyImage(targetImage);
+          let dpiList = getDpiList(greyImage);
+          Kim.resetImageSet(greyImage.data, greyImage.width, greyImage.height, dpiList);
+
+          let queryfile = "card7_2";
           let queryImage = await IJS.Image.load('./Data/' + queryfile + '.png');
           queryImage = queryImage.resize({width: pw, height: ph});
           let greyQueryImage = getGreyImage(queryImage);
-          console.log("grey query image", greyQueryImage);
-          ar.process(greyQueryImage);
+          let queryfile2 = "card7_3";
+          let queryImage2 = await IJS.Image.load('./Data/' + queryfile2 + '.png');
+          queryImage2 = queryImage.resize({width: pw, height: ph});
+          let greyQueryImage2 = getGreyImage(queryImage2);
 
+          ar.process(greyQueryImage);
           var buffer = msgpack.encode(artoolkit.kimDebugMatching);
           var blob = new Blob([buffer], {type: 'text/plain'});
           var aLink = window.document.createElement('a');
-          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '.msp';
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '_p1.msp';
           aLink.href = window.URL.createObjectURL(blob);
           aLink.click();
+
+          artoolkit.kimDebugMatching = {};
+          ar.process(greyQueryImage2);
+          var buffer = msgpack.encode(artoolkit.kimDebugMatching);
+          var blob = new Blob([buffer], {type: 'text/plain'});
+          var aLink = window.document.createElement('a');
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '_p2.msp';
+          aLink.href = window.URL.createObjectURL(blob);
+          aLink.click();
+
+          artoolkit.kimDebugMatching = {};
+          ar.process(greyQueryImage);
+          var buffer = msgpack.encode(artoolkit.kimDebugMatching);
+          var blob = new Blob([buffer], {type: 'text/plain'});
+          var aLink = window.document.createElement('a');
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '_p3.msp';
+          aLink.href = window.URL.createObjectURL(blob);
+          aLink.click();
+
+          artoolkit.kimDebugMatching = {};
+          ar.process(greyQueryImage2);
+          var buffer = msgpack.encode(artoolkit.kimDebugMatching);
+          var blob = new Blob([buffer], {type: 'text/plain'});
+          var aLink = window.document.createElement('a');
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '_p4.msp';
+          aLink.href = window.URL.createObjectURL(blob);
+          aLink.click();
+
+          artoolkit.kimDebugMatching = {};
+          ar.process(greyQueryImage);
+          var buffer = msgpack.encode(artoolkit.kimDebugMatching);
+          var blob = new Blob([buffer], {type: 'text/plain'});
+          var aLink = window.document.createElement('a');
+          aLink.download = 'debugMatch_' + queryfile + '_' + ph + '_p5.msp';
+          aLink.href = window.URL.createObjectURL(blob);
+          aLink.click();
+
         });
       }
     });

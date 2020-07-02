@@ -68,7 +68,10 @@ struct arController {
 	int patt_id = 0; // Running pattern marker id
 
 	ARdouble cameraLens[16];
-	AR_PIXEL_FORMAT pixFormat = AR_PIXEL_FORMAT_RGBA;
+
+    // kim: use MONO
+	//AR_PIXEL_FORMAT pixFormat = AR_PIXEL_FORMAT_RGBA;
+	AR_PIXEL_FORMAT pixFormat = AR_PIXEL_FORMAT_MONO;
 };
 
 std::unordered_map<int, arController> arControllers;
@@ -91,6 +94,52 @@ static int MARKER_INDEX_OUT_OF_BOUNDS = -3;
 static ARMarkerInfo gMarkerInfo;
 
 extern "C" {
+
+    /**
+     * kim: reset imageSet. it differs slightly after loading from the compiled .iset file
+     */
+    int resetImageSet (int id, int index, std::vector<int> &imageData, int width, int height, std::vector<float> &dpiList, int dpi_num) {
+		if (arControllers.find(id) == arControllers.end()) { return {}; }
+		arController *arc = &(arControllers[id]);
+
+        ARUint8 *image;
+        arMalloc(image, ARUint8, width * height);
+        float dpi = 72;
+        float dpi_list[dpi_num];
+        for (int i = 0; i < dpi_num; i++) {
+            dpi_list[i] = dpiList[i];
+        }
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                image[j * width + i] = imageData[j * width + i];
+            }
+        }
+
+        AR2ImageSetT *imageSet2 = ar2GenImageSet( image, width, height, 1, dpi, dpi_list, dpi_num);
+        arc->surfaceSet[index]->surface[0].imageSet = imageSet2;
+
+        EM_ASM_({
+            var a = arguments;
+            artoolkit.kimDebugMatching.imageSets = [];
+        });
+        AR2ImageSetT *imageSet = arc->surfaceSet[index]->surface[0].imageSet;
+        for (int k = 0; k < imageSet->num; k++) {
+          EM_ASM_({
+              artoolkit.kimDebugMatching.imageSets.push([]);
+          });
+          AR2ImageT *debugImage = imageSet->scale[k];
+          for (int i = 0; i < debugImage->xsize; i++) {
+              for (int j = 0; j < debugImage->ysize; j++) {
+                  int pos = j * debugImage->xsize + i;
+                  EM_ASM_({
+                      var a = arguments;
+                      artoolkit.kimDebugMatching.imageSets[a[0]][a[1]] = a[2];
+                  }, k, pos, (int)*(debugImage->imgBW + pos));
+              }
+          }
+        }
+        return 0;
+    }
 
     /**
      * kim: gen feature API
@@ -458,8 +507,10 @@ extern "C" {
 		ar2SetTrackingThresh(arc->ar2Handle, 5.0);
 		//ar2SetTrackingThresh(arc->ar2Handle, 0.2);
 
-		ar2SetSimThresh(arc->ar2Handle, 0.50);
-		ar2SetSimThresh(arc->ar2Handle, 0.50);
+        // kim: change tracking resh from 0.5 to 0.2 for debugging
+		ar2SetSimThresh(arc->ar2Handle, 0.20);
+		//ar2SetSimThresh(arc->ar2Handle, 0.50);
+        
 		ar2SetSearchFeatureNum(arc->ar2Handle, 16);
 		ar2SetSearchSize(arc->ar2Handle, 6);
 		ar2SetTemplateSize1(arc->ar2Handle, 6);
@@ -545,6 +596,19 @@ extern "C" {
 			ARLOGe("loadCamera(): Error loading parameter file %s for camera.\n", cparam_name.c_str());
 			return -1;
 		}
+        EM_ASM_({
+          if (!artoolkit.kimDebugMatching) artoolkit.kimDebugMatching = {};
+          artoolkit.kimDebugMatching.paramMat = ([[null,null,null,null], [null,null,null,null], [null,null,null,null]]);
+        });
+        for (int j = 0; j < 3; j++) {
+          for (int i = 0; i < 4; i++) {
+            EM_ASM_({
+                var a = arguments;
+                artoolkit.kimDebugMatching.paramMat[a[0]][a[1]] = a[2];
+            }, j, i, param.mat[j][i]);
+          }
+        }
+
 		int cameraID = gCameraID++;
 		cameraParams[cameraID] = param;
 

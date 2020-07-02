@@ -8,6 +8,7 @@ EMSCRIPTEN_BINDINGS(constant_bindings) {
     register_vector<float>("FloatList");
 
     function("genFeature", &genFeature);
+    function("resetImageSet", &resetImageSet);
 
 	function("setup", &setup);
 	function("teardown", &teardown);

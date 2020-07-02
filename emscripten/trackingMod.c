@@ -135,29 +135,10 @@ AR2HandleT *ar2CreateHandleSubMod( int pixFormat, int xsize, int ysize/*, int th
      *err = 0.0F;
 
      EM_ASM_({
-       var $a = arguments;
-       if (!artoolkit.kimDebugMatching.dataPtr) artoolkit.kimDebugMatching.dataPtr = ([]);
-       artoolkit.kimDebugMatching.dataPtr.push([]);
-     });
-     for (int j = 0; j < ar2Handle->ysize; j++) {
-       for (int i = 0; i < ar2Handle->xsize; i++) {
-         EM_ASM_({
-           var a = arguments;
-           if (a[0] == 0) {
-             artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1].push([]);
-           }
-artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1][a[1]][a[0]] = ([a[2], a[3], a[4], a[5]]);
-         }, i, j, 
-           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 0],
-           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 1],
-           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 2],
-           dataPtr[ (j*ar2Handle->xsize + i) * 4 + 3]);
-       }
-     }
-
-     EM_ASM_({
          var $a = arguments;
          artoolkit.kimDebugMatching.wTrans1 = [];
+         artoolkit.kimDebugMatching.wTrans2 = [];
+         artoolkit.kimDebugMatching.wTrans3 = [];
      });
 
      for( i = 0; i < surfaceSet->num; i++ ) {
@@ -168,6 +149,8 @@ artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1][
        EM_ASM_({
            var $a = arguments;
            artoolkit.kimDebugMatching.wTrans1.push([[],[],[]]);
+           artoolkit.kimDebugMatching.wTrans2.push([[],[],[]]);
+           artoolkit.kimDebugMatching.wTrans3.push([[],[],[]]);
        });
        for (int ii = 0; ii < 3; ii++) {
          for (int jj = 0; jj < 4; jj++) {
@@ -175,6 +158,14 @@ artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1][
                var a = arguments;
                artoolkit.kimDebugMatching.wTrans1[a[0]][a[1]][a[2]] = a[3];
            }, i, ii, jj, ar2Handle->wtrans1[i][ii][jj]);
+           EM_ASM_({
+               var a = arguments;
+               artoolkit.kimDebugMatching.wTrans2[a[0]][a[1]][a[2]] = a[3];
+           }, i, ii, jj, ar2Handle->wtrans2[i][ii][jj]);
+           EM_ASM_({
+               var a = arguments;
+               artoolkit.kimDebugMatching.wTrans3[a[0]][a[1]][a[2]] = a[3];
+           }, i, ii, jj, ar2Handle->wtrans3[i][ii][jj]);
          }
        }
      }
@@ -521,7 +512,7 @@ artoolkit.kimDebugMatching.dataPtr[artoolkit.kimDebugMatching.dataPtr.length-1][
                      mx: a[3],
                      my: a[4],
                      maxdpi: a[5],
-                     mindip: a[6],
+                     mindpi: a[6],
                      sx: a[7],
                      sy: a[8],
                      xsize: a[9],
